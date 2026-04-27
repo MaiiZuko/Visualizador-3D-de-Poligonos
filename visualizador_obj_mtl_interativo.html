@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visualizador OBJ/MTL Interativo</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --line: #334155;
+      --danger: #f87171;
+      --ok: #34d399;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #1e293b, var(--bg));
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 330px 1fr;
+      height: 100vh;
+    }
+
+    aside {
+      background: rgba(17, 24, 39, 0.92);
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      overflow-y: auto;
+    }
+
+    main {
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 14px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    p, li, label {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .filebox {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-top: 12px;
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    input[type="file"] {
+      width: 100%;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    button, select {
+      background: #1f2937;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    button:hover, select:hover { border-color: var(--accent); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .stat {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .stat b {
+      display: block;
+      font-size: 18px;
+      color: var(--text);
+    }
+
+    .status {
+      border-radius: 12px;
+      padding: 10px;
+      margin-top: 8px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .ok { color: var(--ok); }
+    .bad { color: var(--danger); }
+
+    kbd {
+      display: inline-block;
+      min-width: 22px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #020617;
+      color: var(--text);
+      font-size: 12px;
+      text-align: center;
+      box-shadow: inset 0 -1px 0 #334155;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: linear-gradient(145deg, #020617, #0f172a 60%, #111827);
+    }
+
+    .hud {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(8px);
+      color: var(--muted);
+      font-size: 13px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Visualizador OBJ/MTL</h1>
+      <p>Carrega malhas <strong>.obj</strong>, aplica materiais <strong>.mtl</strong> e permite transformações 3D em tempo real usando matrizes 4x4.</p>
+
+      <div class="filebox">
+        <label>Arquivo .OBJ</label>
+        <input id="objInput" type="file" accept=".obj,text/plain" />
+      </div>
+
+      <div class="filebox">
+        <label>Arquivo .MTL / objetos.mtl</label>
+        <input id="mtlInput" type="file" accept=".mtl,text/plain" />
+      </div>
+
+      <h2>Renderização</h2>
+      <div class="grid">
+        <button id="modeWire">W Wireframe</button>
+        <button id="modeSolid">S Sólido</button>
+        <button id="modeBoth">Wire + Sólido</button>
+        <button id="toggleProj">P Projeção</button>
+      </div>
+
+      <h2>Estado</h2>
+      <div class="stats">
+        <div class="stat"><span>Vértices V</span><b id="vCount">0</b></div>
+        <div class="stat"><span>Arestas E</span><b id="eCount">0</b></div>
+        <div class="stat"><span>Faces F</span><b id="fCount">0</b></div>
+        <div class="stat"><span>Euler</span><b id="eulerCount">0</b></div>
+      </div>
+      <div id="eulerStatus" class="status">Carregue um modelo para verificar V - E + F = 2.</div>
+      <div id="log" class="status">Pronto.</div>
+
+      <h2>Controles</h2>
+      <p><kbd>W</kbd> wireframe, <kbd>S</kbd> sólido, <kbd>B</kbd> ambos, <kbd>P</kbd> alterna isométrica/perspectiva.</p>
+      <p><kbd>R</kbd> + <kbd>X</kbd>/<kbd>Y</kbd>/<kbd>Z</kbd>: rotaciona. Use <kbd>Shift</kbd> para inverter.</p>
+      <p><kbd>S</kbd> + setas: escala uniforme. <kbd>T</kbd> + setas: translação no plano da tela.</p>
+      <p><kbd>Esc</kbd> reseta. Arraste com o mouse para rotação contínua.</p>
+    </aside>
+
+    <main>
+      <canvas id="canvas"></canvas>
+      <div id="hud" class="hud">Projeção: isométrica · Modo: sólido</div>
+    </main>
+  </div>
+
+  <script>
+    "use strict";
+
+    // ================================================================
+    // Matemática vetorial e matrizes 4x4
+    // ================================================================
+    const Vec3 = {
+      add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+      sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+      mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+      dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+      cross: (a, b) => [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+      ],
+      len: (a) => Math.hypot(a[0], a[1], a[2]),
+      norm(a) {
+        const l = Vec3.len(a);
+        return l > 1e-8 ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 1];
+      }
+    };
+
+    const Mat4 = {
+      identity() {
+        return [
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ];
+      },
+      multiply(a, b) {
+        const out = new Array(16).fill(0);
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            for (let k = 0; k < 4; k++) {
+              out[r * 4 + c] += a[r * 4 + k] * b[k * 4 + c];
+            }
+          }
+        }
+        return out;
+      },
+      translation(x, y, z) {
+        return [
+          1, 0, 0, x,
+          0, 1, 0, y,
+          0, 0, 1, z,
+          0, 0, 0, 1
+        ];
+      },
+      scale(s) {
+        return [
+          s, 0, 0, 0,
+          0, s, 0, 0,
+          0, 0, s, 0,
+          0, 0, 0, 1
+        ];
+      },
+      rotateX(a) {
+        const c = Math.cos(a), s = Math.sin(a);
+        return [
+          1, 0, 0, 0,
+          0, c, -s, 0,
+          0, s, c, 0,
+          0, 0, 0, 1
+        ];
+      },
+      rotateY(a) {
+        const c = Math.cos(a), s = Math.sin(a);
+        return [
+          c, 0, s, 0,
+          0, 1, 0, 0,
+          -s, 0, c, 0,
+          0, 0, 0, 1
+        ];
+      },
+      rotateZ(a) {
+        const c = Math.cos(a), s = Math.sin(a);
+        return [
+          c, -s, 0, 0,
+          s, c, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ];
+      },
+      transformPoint(m, p) {
+        const x = p[0], y = p[1], z = p[2], w = 1;
+        const tx = m[0] * x + m[1] * y + m[2] * z + m[3] * w;
+        const ty = m[4] * x + m[5] * y + m[6] * z + m[7] * w;
+        const tz = m[8] * x + m[9] * y + m[10] * z + m[11] * w;
+        const tw = m[12] * x + m[13] * y + m[14] * z + m[15] * w;
+        return Math.abs(tw) > 1e-8 ? [tx / tw, ty / tw, tz / tw] : [tx, ty, tz];
+      },
+      transformVector(m, v) {
+        const x = v[0], y = v[1], z = v[2];
+        return [
+          m[0] * x + m[1] * y + m[2] * z,
+          m[4] * x + m[5] * y + m[6] * z,
+          m[8] * x + m[9] * y + m[10] * z
+        ];
+      }
+    };
+
+    // ================================================================
+    // Parser MTL
+    // Suporta: newmtl, Kd, Ka, Ks, Ns. Usa Kd para cor sólida.
+    // ================================================================
+    function parseMTL(text) {
+      const materials = new Map();
+      let current = null;
+
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        const parts = line.split(/\s+/);
+        const key = parts[0];
+
+        if (key === "newmtl") {
+          current = { name: parts.slice(1).join(" "), Kd: [0.75, 0.75, 0.75], Ka: [0, 0, 0], Ks: [0, 0, 0], Ns: 1 };
+          materials.set(current.name, current);
+        } else if (current && ["Kd", "Ka", "Ks"].includes(key)) {
+          current[key] = parts.slice(1, 4).map(Number).map(v => Number.isFinite(v) ? v : 0);
+        } else if (current && key === "Ns") {
+          current.Ns = Number(parts[1]) || 1;
+        }
+      }
+
+      return materials;
+    }
+
+    // ================================================================
+    // Parser OBJ
+    // Suporta faces: f v, f v//vn, f v/vt/vn e também f v/vt.
+    // Trata índices negativos conforme a especificação OBJ.
+    // ================================================================
+    function parseOBJ(text, materials) {
+      const positions = [];
+      const normals = [];
+      const uvs = [];
+      const faces = [];
+      const materialLibs = [];
+      let currentMaterial = "default";
+
+      const defaultMaterial = { name: "default", Kd: [0.78, 0.78, 0.78], Ka: [0, 0, 0], Ks: [0, 0, 0], Ns: 1 };
+      if (!materials.has("default")) materials.set("default", defaultMaterial);
+
+      function resolveIndex(idx, listLength) {
+        if (idx === undefined || idx === null || idx === "") return null;
+        const n = Number(idx);
+        if (!Number.isInteger(n) || n === 0) return null;
+        return n < 0 ? listLength + n : n - 1;
+      }
+
+      function parseFaceToken(token) {
+        const pieces = token.split("/");
+        return {
+          v: resolveIndex(pieces[0], positions.length),
+          vt: resolveIndex(pieces[1], uvs.length),
+          vn: resolveIndex(pieces[2], normals.length)
+        };
+      }
+
+      for (const raw of text.split(/\r?\n/)) {
+        const clean = raw.split("#")[0].trim();
+        if (!clean) continue;
+        const parts = clean.split(/\s+/);
+        const key = parts[0];
+
+        if (key === "v") {
+          positions.push(parts.slice(1, 4).map(Number));
+        } else if (key === "vn") {
+          normals.push(Vec3.norm(parts.slice(1, 4).map(Number)));
+        } else if (key === "vt") {
+          uvs.push(parts.slice(1, 3).map(Number));
+        } else if (key === "f") {
+          const verts = parts.slice(1).map(parseFaceToken).filter(v => v.v !== null);
+          if (verts.length >= 3) faces.push({ verts, material: currentMaterial });
+        } else if (key === "usemtl") {
+          currentMaterial = parts.slice(1).join(" ") || "default";
+          if (!materials.has(currentMaterial)) {
+            materials.set(currentMaterial, { ...defaultMaterial, name: currentMaterial });
+          }
+        } else if (key === "mtllib") {
+          materialLibs.push(parts.slice(1).join(" "));
+        } else if (key === "g" || key === "o" || key === "s") {
+          // Grupos, objetos e smoothing groups são ignorados sem quebrar a leitura.
+        }
+      }
+
+      return { positions, normals, uvs, faces, materials, materialLibs };
+    }
+
+    // ================================================================
+    // Montagem da geometria
+    // - Triangulação fan para faces com 4+ vértices
+    // - Centroide para origem
+    // - Normalização de escala
+    // - Normais por face quando ausentes
+    // - Cálculo de V, E, F e Euler
+    // ================================================================
+    function buildMesh(obj) {
+      const rawPositions = obj.positions;
+      if (rawPositions.length === 0) throw new Error("O arquivo OBJ não contém vértices v x y z.");
+      if (obj.faces.length === 0) throw new Error("O arquivo OBJ não contém faces f.");
+
+      const centroid = rawPositions.reduce((acc, p) => Vec3.add(acc, p), [0, 0, 0]).map(v => v / rawPositions.length);
+      const centered = rawPositions.map(p => Vec3.sub(p, centroid));
+      let maxRadius = 0;
+      for (const p of centered) maxRadius = Math.max(maxRadius, Vec3.len(p));
+      const scale = maxRadius > 1e-8 ? 1 / maxRadius : 1;
+      const positions = centered.map(p => Vec3.mul(p, scale));
+
+      const triangles = [];
+      const edgeSet = new Set();
+
+      function addEdge(a, b) {
+        const lo = Math.min(a, b);
+        const hi = Math.max(a, b);
+        edgeSet.add(`${lo}-${hi}`);
+      }
+
+      for (const face of obj.faces) {
+        const verts = face.verts;
+
+        // Contagem de arestas da face original, antes da triangulação.
+        for (let i = 0; i < verts.length; i++) {
+          addEdge(verts[i].v, verts[(i + 1) % verts.length].v);
+        }
+
+        // Fan triangulation: (0, i, i+1).
+        for (let i = 1; i < verts.length - 1; i++) {
+          const a = verts[0], b = verts[i], c = verts[i + 1];
+          const p0 = positions[a.v], p1 = positions[b.v], p2 = positions[c.v];
+
+          let n;
+          if (a.vn !== null && b.vn !== null && c.vn !== null) {
+            n = Vec3.norm(Vec3.add(Vec3.add(obj.normals[a.vn] || [0, 0, 1], obj.normals[b.vn] || [0, 0, 1]), obj.normals[c.vn] || [0, 0, 1]));
+          } else {
+            n = Vec3.norm(Vec3.cross(Vec3.sub(p1, p0), Vec3.sub(p2, p0)));
+          }
+
+          triangles.push({
+            indices: [a.v, b.v, c.v],
+            vertices: [p0, p1, p2],
+            normal: n,
+            material: face.material,
+            uv: [a.vt, b.vt, c.vt]
+          });
+        }
+      }
+
+      return {
+        positions,
+        triangles,
+        materials: obj.materials,
+        stats: {
+          V: rawPositions.length,
+          E: edgeSet.size,
+          F: obj.faces.length,
+          euler: rawPositions.length - edgeSet.size + obj.faces.length
+        }
+      };
+    }
+
+    // ================================================================
+    // Estado da aplicação
+    // ================================================================
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const logEl = document.getElementById("log");
+    const hudEl = document.getElementById("hud");
+
+    let mtlText = "";
+    let objText = "";
+    let mesh = null;
+
+    const state = {
+      projection: "isometric",
+      renderMode: "solid",
+      transformMode: null,
+      modelMatrix: Mat4.identity(),
+      baseIso: Mat4.multiply(Mat4.rotateX(-Math.PI / 6), Mat4.rotateY(Math.PI / 4)),
+      mouseDown: false,
+      lastMouse: [0, 0],
+      selectedTriangle: -1
+    };
+
+    const lightDir = Vec3.norm([0.35, 0.55, 1.0]);
+
+    function resetTransform() {
+      state.modelMatrix = Mat4.identity();
+      state.selectedTriangle = -1;
+    }
+
+    function setLog(msg) { logEl.textContent = msg; }
+
+    function updateStats() {
+      const stats = mesh?.stats || { V: 0, E: 0, F: 0, euler: 0 };
+      document.getElementById("vCount").textContent = stats.V;
+      document.getElementById("eCount").textContent = stats.E;
+      document.getElementById("fCount").textContent = stats.F;
+      document.getElementById("eulerCount").textContent = stats.euler;
+
+      const eulerEl = document.getElementById("eulerStatus");
+      if (!mesh) {
+        eulerEl.textContent = "Carregue um modelo para verificar V - E + F = 2.";
+        eulerEl.className = "status";
+      } else if (stats.euler === 2) {
+        eulerEl.textContent = "OK: V - E + F = 2. A malha é compatível com um poliedro convexo/simples fechado.";
+        eulerEl.className = "status ok";
+      } else {
+        eulerEl.textContent = `Aviso: V - E + F = ${stats.euler}. Modelos abertos, com buracos, múltiplos componentes ou topologia não esférica geralmente não resultam em 2.`;
+        eulerEl.className = "status bad";
+      }
+    }
+
+    function updateHUD() {
+      const proj = state.projection === "isometric" ? "isométrica" : "perspectiva";
+      const mode = state.renderMode === "solid" ? "sólido" : state.renderMode === "wire" ? "wireframe" : "wire + sólido";
+      const tool = state.transformMode ? ` · Ferramenta: ${state.transformMode.toUpperCase()}` : "";
+      hudEl.textContent = `Projeção: ${proj} · Modo: ${mode}${tool}`;
+    }
+
+    async function readFile(file) {
+      return await file.text();
+    }
+
+    async function reloadMesh() {
+      if (!objText) return;
+      try {
+        const materials = mtlText ? parseMTL(mtlText) : new Map();
+        const obj = parseOBJ(objText, materials);
+        mesh = buildMesh(obj);
+        resetTransform();
+        updateStats();
+        setLog(`Modelo carregado.\nMTL referenciado: ${obj.materialLibs.join(", ") || "nenhum"}\nTriângulos renderizáveis: ${mesh.triangles.length}`);
+      } catch (err) {
+        mesh = null;
+        updateStats();
+        setLog(`Erro: ${err.message}`);
+      }
+    }
+
+    document.getElementById("objInput").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      objText = await readFile(file);
+      await reloadMesh();
+    });
+
+    document.getElementById("mtlInput").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      mtlText = await readFile(file);
+      await reloadMesh();
+      setLog(`Material carregado: ${file.name}\n${logEl.textContent}`);
+    });
+
+    document.getElementById("modeWire").onclick = () => state.renderMode = "wire";
+    document.getElementById("modeSolid").onclick = () => state.renderMode = "solid";
+    document.getElementById("modeBoth").onclick = () => state.renderMode = "both";
+    document.getElementById("toggleProj").onclick = () => toggleProjection();
+
+    function toggleProjection() {
+      state.projection = state.projection === "isometric" ? "perspective" : "isometric";
+    }
+
+    function applyTransform(m) {
+      // Pré-multiplicação: nova transformação atua no espaço atual do modelo.
+      state.modelMatrix = Mat4.multiply(m, state.modelMatrix);
+    }
+
+    window.addEventListener("keydown", (ev) => {
+      const key = ev.key.toLowerCase();
+      const shift = ev.shiftKey ? -1 : 1;
+
+      if (ev.key === "Escape") {
+        resetTransform();
+        state.transformMode = null;
+        return;
+      }
+
+      if (key === "p") toggleProjection();
+      if (key === "w") state.renderMode = "wire";
+      if (key === "b") state.renderMode = "both";
+
+      // S tem dois papéis: modo sólido quando sozinho; escala quando usado como ferramenta.
+      if (key === "s" && !ev.repeat) {
+        state.transformMode = state.transformMode === "scale" ? null : "scale";
+        if (!state.transformMode) state.renderMode = "solid";
+      }
+      if (key === "r" && !ev.repeat) state.transformMode = state.transformMode === "rotate" ? null : "rotate";
+      if (key === "t" && !ev.repeat) state.transformMode = state.transformMode === "translate" ? null : "translate";
+
+      if (state.transformMode === "rotate") {
+        const angle = 0.10 * shift;
+        if (key === "x") applyTransform(Mat4.rotateX(angle));
+        if (key === "y") applyTransform(Mat4.rotateY(angle));
+        if (key === "z") applyTransform(Mat4.rotateZ(angle));
+      }
+
+      if (state.transformMode === "scale") {
+        if (ev.key === "ArrowUp" || ev.key === "ArrowRight") applyTransform(Mat4.scale(1.08));
+        if (ev.key === "ArrowDown" || ev.key === "ArrowLeft") applyTransform(Mat4.scale(0.92));
+      }
+
+      if (state.transformMode === "translate") {
+        const d = 0.08;
+        if (ev.key === "ArrowLeft") applyTransform(Mat4.translation(-d, 0, 0));
+        if (ev.key === "ArrowRight") applyTransform(Mat4.translation(d, 0, 0));
+        if (ev.key === "ArrowUp") applyTransform(Mat4.translation(0, d, 0));
+        if (ev.key === "ArrowDown") applyTransform(Mat4.translation(0, -d, 0));
+      }
+    });
+
+    canvas.addEventListener("mousedown", (ev) => {
+      state.mouseDown = true;
+      state.lastMouse = [ev.clientX, ev.clientY];
+      state.selectedTriangle = pickTriangle(ev.clientX, ev.clientY);
+    });
+
+    window.addEventListener("mouseup", () => state.mouseDown = false);
+
+    window.addEventListener("mousemove", (ev) => {
+      if (!state.mouseDown) return;
+      const dx = ev.clientX - state.lastMouse[0];
+      const dy = ev.clientY - state.lastMouse[1];
+      state.lastMouse = [ev.clientX, ev.clientY];
+      applyTransform(Mat4.multiply(Mat4.rotateY(dx * 0.008), Mat4.rotateX(dy * 0.008)));
+    });
+
+    canvas.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const s = ev.deltaY < 0 ? 1.08 : 0.92;
+      applyTransform(Mat4.scale(s));
+    }, { passive: false });
+
+    function resize() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function materialColor(name) {
+      const m = mesh?.materials.get(name) || mesh?.materials.get("default") || { Kd: [0.78, 0.78, 0.78] };
+      return m.Kd.map(c => Math.max(0, Math.min(1, c)));
+    }
+
+    function rgb(c, shade = 1) {
+      const r = Math.round(255 * c[0] * shade);
+      const g = Math.round(255 * c[1] * shade);
+      const b = Math.round(255 * c[2] * shade);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function projectPoint(p, width, height) {
+      const minSide = Math.min(width, height);
+      if (state.projection === "perspective") {
+        const cameraZ = 3.4;
+        const z = p[2] + cameraZ;
+        const f = 1.35 / Math.max(0.2, z);
+        return [width / 2 + p[0] * minSide * f, height / 2 - p[1] * minSide * f, z];
+      }
+      return [width / 2 + p[0] * minSide * 0.42, height / 2 - p[1] * minSide * 0.42, p[2]];
+    }
+
+    function getViewMatrix() {
+      return state.projection === "isometric" ? Mat4.multiply(state.baseIso, state.modelMatrix) : state.modelMatrix;
+    }
+
+    function transformedTriangles() {
+      if (!mesh) return [];
+      const view = getViewMatrix();
+      const rect = canvas.getBoundingClientRect();
+      const tris = [];
+
+      for (let i = 0; i < mesh.triangles.length; i++) {
+        const tri = mesh.triangles[i];
+        const tv = tri.vertices.map(p => Mat4.transformPoint(view, p));
+        const faceNormal = Vec3.norm(Vec3.cross(Vec3.sub(tv[1], tv[0]), Vec3.sub(tv[2], tv[0])));
+
+        // Backface culling pedido: sinal da componente Z da normal da face.
+        // Neste sistema de tela, normais com z <= 0 estão voltadas para trás.
+        const backFacing = faceNormal[2] <= 0;
+
+        const points = tv.map(p => projectPoint(p, rect.width, rect.height));
+        const depth = (points[0][2] + points[1][2] + points[2][2]) / 3;
+        tris.push({ ...tri, id: i, points, normal: faceNormal, backFacing, depth });
+      }
+
+      // Painter's algorithm: mais distante primeiro.
+      return tris.sort((a, b) => b.depth - a.depth);
+    }
+
+    function drawTrianglePath(points) {
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      ctx.lineTo(points[1][0], points[1][1]);
+      ctx.lineTo(points[2][0], points[2][1]);
+      ctx.closePath();
+    }
+
+    function render() {
+      resize();
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      updateHUD();
+
+      if (!mesh) {
+        ctx.fillStyle = "rgba(229, 231, 235, 0.75)";
+        ctx.font = "18px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("Carregue um arquivo .OBJ para começar", rect.width / 2, rect.height / 2);
+        requestAnimationFrame(render);
+        return;
+      }
+
+      const tris = transformedTriangles();
+
+      for (const tri of tris) {
+        if (tri.backFacing) continue;
+        const base = materialColor(tri.material);
+        const lambert = Math.max(0.12, Vec3.dot(Vec3.norm(tri.normal), lightDir));
+        const selected = tri.id === state.selectedTriangle;
+
+        if (state.renderMode === "solid" || state.renderMode === "both") {
+          drawTrianglePath(tri.points);
+          ctx.fillStyle = selected ? "rgb(255, 230, 120)" : rgb(base, lambert);
+          ctx.fill();
+        }
+
+        if (state.renderMode === "wire" || state.renderMode === "both") {
+          drawTrianglePath(tri.points);
+          ctx.lineWidth = selected ? 2.5 : 1.0;
+          ctx.strokeStyle = selected ? "#facc15" : state.renderMode === "both" ? "rgba(2, 6, 23, 0.72)" : rgb(base, 1.0);
+          ctx.stroke();
+        }
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    function pointInTriangle(px, py, p0, p1, p2) {
+      const area = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const a = area(p0, p1, p2);
+      const a1 = area([px, py], p1, p2);
+      const a2 = area(p0, [px, py], p2);
+      const a3 = area(p0, p1, [px, py]);
+      const hasNeg = a1 < 0 || a2 < 0 || a3 < 0;
+      const hasPos = a1 > 0 || a2 > 0 || a3 > 0;
+      return a < 0 ? !(hasPos && !hasNeg) : !(hasNeg && !hasPos);
+    }
+
+    function pickTriangle(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const tris = transformedTriangles().filter(t => !t.backFacing).sort((a, b) => a.depth - b.depth);
+
+      for (const tri of tris) {
+        const p = tri.points;
+        if (pointInTriangle(x, y, p[0], p[1], p[2])) return tri.id;
+      }
+      return -1;
+    }
+
+    // Modelo inicial de demonstração: icosaedro inspirado no exemplo do Red Book.
+    function loadDemoIcosahedron() {
+      const X = 0.525731112119133606;
+      const Z = 0.850650808352039932;
+      objText = `# Icosaedro de demonstração\nmtllib objetos.mtl\nusemtl bronze\nv -${X} 0 ${Z}\nv ${X} 0 ${Z}\nv -${X} 0 -${Z}\nv ${X} 0 -${Z}\nv 0 ${Z} ${X}\nv 0 ${Z} -${X}\nv 0 -${Z} ${X}\nv 0 -${Z} -${X}\nv ${Z} ${X} 0\nv -${Z} ${X} 0\nv ${Z} -${X} 0\nv -${Z} -${X} 0\nf 1 5 2\nf 1 10 5\nf 10 6 5\nf 5 6 9\nf 5 9 2\nf 9 11 2\nf 11 7 2\nf 7 1 2\nf 7 12 1\nf 12 10 1\nf 10 12 3\nf 10 3 6\nf 6 3 4\nf 6 4 9\nf 9 4 11\nf 11 4 8\nf 11 8 7\nf 7 8 12\nf 12 8 3\nf 3 8 4\n`;
+      mtlText = `# objetos.mtl de demonstração\nnewmtl bronze\nKd 0.85 0.48 0.22\nKa 0.05 0.03 0.02\nKs 0.4 0.3 0.2\nNs 20\n`;
+      reloadMesh();
+    }
+
+    loadDemoIcosahedron();
+    render();
+  </script>
+</body>
+</html>

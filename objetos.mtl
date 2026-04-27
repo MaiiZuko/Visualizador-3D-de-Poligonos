@@ -1,0 +1,38 @@
+# objetos.mtl
+# Materiais para o cubo de teste
+
+newmtl vermelho
+Ka 0.10 0.00 0.00
+Kd 0.90 0.10 0.10
+Ks 0.30 0.30 0.30
+Ns 24
+
+newmtl azul
+Ka 0.00 0.00 0.10
+Kd 0.10 0.25 0.95
+Ks 0.30 0.30 0.30
+Ns 24
+
+newmtl verde
+Ka 0.00 0.10 0.00
+Kd 0.10 0.80 0.25
+Ks 0.25 0.25 0.25
+Ns 18
+
+newmtl amarelo
+Ka 0.10 0.08 0.00
+Kd 0.95 0.80 0.10
+Ks 0.25 0.25 0.25
+Ns 18
+
+newmtl roxo
+Ka 0.08 0.00 0.10
+Kd 0.60 0.20 0.85
+Ks 0.35 0.35 0.35
+Ns 28
+
+newmtl laranja
+Ka 0.10 0.04 0.00
+Kd 0.95 0.45 0.10
+Ks 0.30 0.30 0.30
+Ns 22
